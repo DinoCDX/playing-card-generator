@@ -1,69 +1,81 @@
-<!-- 2024-05-03 false-fox @ falsefox.dev - GPL 3.0 Licensed -->
+const puppeteer = require('puppeteer');
+const fs = require('fs');
 
-<html>
+const suits = ['spades', 'hearts', 'clubs', 'diamonds'];
+const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const suitSymbols = { 'spades': '♠', 'hearts': '♥', 'clubs': '♣', 'diamonds': '♦' };
 
-<head>
-    <style>
-        #card {
-            background-color: white;
-            width: 2.5in;
-            height: 3.5in;
-            border-radius: 5mm;
-            color: black;
-            text-align: center;
-            font-size: 8em;
-            display: flex;
-            flex-direction: column;
-            max-height: 3.5in;
-            flex-basis: 0;
-            margin: 0px;
-            font-family: sans-serif;
+(async () => {
+    // Create output directories
+    const dirs = ['cards/static', 'cards/frames', 'cards/animated'];
+    dirs.forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    // Generate the Card Back & Closing Frames
+    console.log("Generating Card Back...");
+    await page.setContent(`
+        <style>
+            body { background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .card-back {
+                width: 200px; height: 280px;
+                border-radius: 12px; border: 4px solid white;
+                background: repeating-linear-gradient(45deg, #1a1a2e, #1a1a2e 10px, #16213e 10px, #16213e 20px);
+                transform-origin: center;
+                box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
+            }
+        </style>
+        <div class="card-back" id="back"></div>
+    `);
+    
+    const backEl = await page.$('#back');
+    await backEl.screenshot({ path: 'cards/static/card_back.png', omitBackground: true });
+    
+    const scales = [1.0, 0.75, 0.5, 0.25, 0.1];
+    for (let i = 0; i < scales.length; i++) {
+        await page.evaluate((s) => document.getElementById('back').style.transform = `scaleX(${s})`, scales[i]);
+        await backEl.screenshot({ path: `cards/frames/back_scale_${i}.png`, omitBackground: true });
+    }
+
+    // Generate the 52 Static Cards & Opening Frames
+    for (const suit of suits) {
+        for (const value of values) {
+            console.log(`Generating ${value} of ${suit}...`);
+            const color = (suit === 'hearts' || suit === 'diamonds') ? '#d90429' : '#2b2d42';
+            const symbol = suitSymbols[suit];
+            
+            await page.setContent(`
+                <style>
+                    body { background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                    .card {
+                        width: 200px; height: 280px;
+                        border-radius: 12px; border: 2px solid #ccc;
+                        background: white; color: ${color};
+                        font-family: Arial, sans-serif; position: relative;
+                        transform-origin: center; box-sizing: border-box;
+                    }
+                    .top-left { position: absolute; top: 10px; left: 15px; font-size: 36px; text-align: center; line-height: 1; }
+                    .bottom-right { position: absolute; bottom: 10px; right: 15px; font-size: 36px; text-align: center; line-height: 1; transform: rotate(180deg); }
+                    .center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 80px; }
+                </style>
+                <div class="card" id="front">
+                    <div class="top-left"><b>${value}</b><br>${symbol}</div>
+                    <div class="center">${symbol}</div>
+                    <div class="bottom-right"><b>${value}</b><br>${symbol}</div>
+                </div>
+            `);
+            
+            const frontEl = await page.$('#front');
+            await frontEl.screenshot({ path: `cards/static/${suit}_${value}.png`, omitBackground: true });
+            
+            const frontScales = [0.1, 0.25, 0.5, 0.75, 1.0];
+            for (let i = 0; i < frontScales.length; i++) {
+                await page.evaluate((s) => document.getElementById('front').style.transform = `scaleX(${s})`, frontScales[i]);
+                await frontEl.screenshot({ path: `cards/frames/${suit}_${value}_scale_${i}.png`, omitBackground: true });
+            }
         }
-
-        .number {
-            position: absolute;
-            margin: 0px;
-            margin-top: 0.2in;
-            margin-left: 0.5in;
-            height: 2in;
-        }
-
-        .number10 {
-            position: absolute;
-            margin: 0px;
-            margin-top: 0.5in;
-            margin-left: 0in;
-            font-size: 1.6em;
-            height: 2in;
-        }
-
-
-        .topLeftSymbol {
-            font-size: 0.5em;
-            margin: 0px;
-            margin-left: 0.1em;
-            text-align: left;
-
-        }
-
-        .bottomRightSymbol {
-            margin: 0px;
-            font-size: 0.5em;
-            text-align: right;
-            margin-top: 1.97in;
-            margin-right: 0.1em;
-
-
-        }
-    </style>
-</head>
-
-<body style="background-color: black;">
-    <div id="card">
-        <h1 class="topLeftSymbol">♦️</h1>
-        <h1 class="number" style="color:red">9</h1>
-        <h1 class="bottomRightSymbol">♦️</h1>
-    </div>
-</body>
-
-</html>
+    }
+    await browser.close();
+    console.log("All frames exported!");
+})();
