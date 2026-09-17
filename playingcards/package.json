@@ -1,14 +1,19 @@
 {
   "name": "playingcards",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "A generator for static and animated (flip) playing card emojis, intended for use as Discord emojis.",
+  "main": "generate-cards.js",
   "scripts": {
+    "generate:cards": "node generate-cards.js",
+    "generate:gifs": "node generate-flip-gifs.js",
+    "generate:all": "npm run generate:cards && npm run generate:gifs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "false-fox",
   "license": "GPL-3.0-only",
   "dependencies": {
-    "puppeteer": "^19.6.3"
+    "puppeteer": "^22.15.0",
+    "gifencoder": "^2.0.1",
+    "pngjs": "^7.0.0"
   }
 }
