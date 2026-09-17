@@ -1,81 +1,105 @@
-const puppeteer = require('puppeteer');
-const fs = require('fs');
-
-const suits = ['spades', 'hearts', 'clubs', 'diamonds'];
-const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-const suitSymbols = { 'spades': '♠', 'hearts': '♥', 'clubs': '♣', 'diamonds': '♦' };
-
-(async () => {
-    // Create output directories
-    const dirs = ['cards/static', 'cards/frames', 'cards/animated'];
-    dirs.forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
-
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-
-    // Generate the Card Back & Closing Frames
-    console.log("Generating Card Back...");
-    await page.setContent(`
-        <style>
-            body { background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .card-back {
-                width: 200px; height: 280px;
-                border-radius: 12px; border: 4px solid white;
-                background: repeating-linear-gradient(45deg, #1a1a2e, #1a1a2e 10px, #16213e 10px, #16213e 20px);
-                transform-origin: center;
-                box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
-            }
-        </style>
-        <div class="card-back" id="back"></div>
-    `);
-    
-    const backEl = await page.$('#back');
-    await backEl.screenshot({ path: 'cards/static/card_back.png', omitBackground: true });
-    
-    const scales = [1.0, 0.75, 0.5, 0.25, 0.1];
-    for (let i = 0; i < scales.length; i++) {
-        await page.evaluate((s) => document.getElementById('back').style.transform = `scaleX(${s})`, scales[i]);
-        await backEl.screenshot({ path: `cards/frames/back_scale_${i}.png`, omitBackground: true });
-    }
-
-    // Generate the 52 Static Cards & Opening Frames
-    for (const suit of suits) {
-        for (const value of values) {
-            console.log(`Generating ${value} of ${suit}...`);
-            const color = (suit === 'hearts' || suit === 'diamonds') ? '#d90429' : '#2b2d42';
-            const symbol = suitSymbols[suit];
-            
-            await page.setContent(`
-                <style>
-                    body { background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-                    .card {
-                        width: 200px; height: 280px;
-                        border-radius: 12px; border: 2px solid #ccc;
-                        background: white; color: ${color};
-                        font-family: Arial, sans-serif; position: relative;
-                        transform-origin: center; box-sizing: border-box;
-                    }
-                    .top-left { position: absolute; top: 10px; left: 15px; font-size: 36px; text-align: center; line-height: 1; }
-                    .bottom-right { position: absolute; bottom: 10px; right: 15px; font-size: 36px; text-align: center; line-height: 1; transform: rotate(180deg); }
-                    .center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 80px; }
-                </style>
-                <div class="card" id="front">
-                    <div class="top-left"><b>${value}</b><br>${symbol}</div>
-                    <div class="center">${symbol}</div>
-                    <div class="bottom-right"><b>${value}</b><br>${symbol}</div>
-                </div>
-            `);
-            
-            const frontEl = await page.$('#front');
-            await frontEl.screenshot({ path: `cards/static/${suit}_${value}.png`, omitBackground: true });
-            
-            const frontScales = [0.1, 0.25, 0.5, 0.75, 1.0];
-            for (let i = 0; i < frontScales.length; i++) {
-                await page.evaluate((s) => document.getElementById('front').style.transform = `scaleX(${s})`, frontScales[i]);
-                await frontEl.screenshot({ path: `cards/frames/${suit}_${value}_scale_${i}.png`, omitBackground: true });
-            }
+<!-- 2024-05-03 false-fox @ falsefox.dev - GPL 3.0 Licensed -->
+<!-- 2026 fork: refreshed visuals, added a card-back demo -->
+<html>
+<head>
+    <style>
+        body {
+            background-color: #111214;
+            display: flex;
+            gap: 1in;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
         }
-    }
-    await browser.close();
-    console.log("All frames exported!");
-})();
+        .card {
+            position: relative;
+            overflow: hidden;
+            width: 2.5in;
+            height: 3.5in;
+            border-radius: 5mm;
+            box-shadow: 0 0.06in 0.12in rgba(0,0,0,0.35);
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        /* ---- front face (9 of diamonds) ---- */
+        #front { background: #ffffff; }
+        #front .watermark {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.6in;
+            opacity: 0.09;
+            color: #e0263f;
+        }
+        #front .corner {
+            position: absolute;
+            font-size: 0.55in;
+            line-height: 1;
+            color: #e0263f;
+        }
+        #front .corner.top { top: 0.14in; left: 0.16in; }
+        #front .corner.bottom { bottom: 0.14in; right: 0.16in; transform: rotate(180deg); }
+        #front .rank {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.3in;
+            color: #e0263f;
+            text-shadow: 0 0.02in 0 rgba(0,0,0,0.15);
+        }
+        /* ---- back face ---- */
+        #back {
+            background: #7a1128;
+        }
+        #back .frame-outer {
+            position: absolute;
+            inset: 0.12in;
+            border: 0.045in solid #e9d9b8;
+            border-radius: 3mm;
+        }
+        #back .frame-inner {
+            position: absolute;
+            inset: 0.2in;
+            border: 0.02in solid #e9d9b8;
+            border-radius: 2mm;
+            background-color: #7a1128;
+            background-image:
+                repeating-linear-gradient(45deg, #e9d9b822 0, #e9d9b822 0.045in, transparent 0.045in, transparent 0.14in),
+                repeating-linear-gradient(-45deg, #e9d9b822 0, #e9d9b822 0.045in, transparent 0.045in, transparent 0.14in);
+        }
+        #back .medallion {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 1.5in;
+            height: 1.5in;
+            border-radius: 50%;
+            border: 0.035in solid #e9d9b8;
+            background: repeating-radial-gradient(
+                circle,
+                #e9d9b8e6 0,
+                #e9d9b8e6 0.018in,
+                transparent 0.018in,
+                transparent 0.11in
+            );
+        }
+    </style>
+</head>
+<body>
+    <div id="front" class="card">
+        <div class="watermark">♦️</div>
+        <div class="corner top">♦️</div>
+        <div class="rank">9</div>
+        <div class="corner bottom">♦️</div>
+    </div>
+    <div id="back" class="card">
+        <div class="frame-outer"></div>
+        <div class="frame-inner"></div>
+        <div class="medallion"></div>
+    </div>
+</body>
+</html>
