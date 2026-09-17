@@ -1,28 +1,29 @@
-# Playing Card Generator
-This project was made a year or three back. Low-effort and intended to simply automate creating cards for a Discord bot for economy features like blackjack and other table games. Intended to be uploaded as emojis.
+# playing-card-generator (fork)
 
-This was never intended to be public, but this upload is part of an initiviatve to open source stuff that's just laying in my hard drive. I probably won't be making improvements but I will bugfix. Feel free to contact me if you have questions.
+A generator for playing card emojis, intended for use in Discord. Fork of
+[false-fox/playing-card-generator](https://github.com/false-fox/playing-card-generator).
 
-The program uses Node.JS and HTML to create the cards and puppeteer to render them to images. You can edit the css and html in the source code to manipulate the rendered card's appearences.
+## What's new in this fork
 
-/playingcards is for classic, rectangular shaped cards. /playingcardssquare/ is for square ones (see: preview).
+- **Animated flip GIFs** — `generate-flip-gifs.js` renders each of the 52
+  cards as a small "flip" animation: card back → card face. The GIF loop
+  count is a named constant (`GIF_LOOP_REPEAT`), currently **set to `-1`**
+  (plays through once, then stops on the final frame — no looping) — see
+  the comment above it in that file for exactly what that number means
+  and how to change it.
+- **Card back** — `templates.js` defines a shared back design that looks
+  like an actual card back rather than an emoji: cream double border,
+  diamond-lattice ink pattern, and a central ring medallion, all built
+  from plain CSS (no glyph or text). It's used both for the standalone
+  `card_back.png` and as the "closed" half of every flip GIF, so they
+  always match. Colours live in `BACK_STOCK_COLOR` / `BACK_INK_COLOR` at
+  the top of `templates.js` if you want to restyle it.
+- **Refreshed visuals** — cards now have a large translucent suit
+  watermark behind the rank, a drop shadow, and a serif typeface, in
+  place of the old margin-hack corner layout.
+- **CI workflow** — `.github/workflows/generate-cards.yml` regenerates
+  every card + gif on every push to `main` (or manually via
+  "Run workflow"), zips `cards/` and `gifs/` together, and publishes the
+  zip as a GitHub Release.
 
-## Usage
-
-Install via `npm install` and simply execute the index.js file using `node index.js`. The result will be in the /cards/ directory
-
-If you just want the cards, feel free to go to to releases and download the zip.
-
-## Preview:
-
-### Rectangular cards
-
-![preview](./playingcards/cards/A_of_spades.png)
-
-### Square cards
-
-![preview](./playingcardssquare/cards/6_of_diamonds.png)
-
-## LICENSE
-
-GPL 3.0. Please contact me if you use this in your project, i'm curious to know what you use it for!
+## Layout
