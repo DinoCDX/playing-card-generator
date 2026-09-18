@@ -2,13 +2,35 @@
 // Renders a "flip" animation (card back -> card face) for every card as an
 // animated GIF, sized for use as Discord emojis. The back half of every
 // flip uses the exact same markup as the standalone card_back.png, so the
-// still back-cover emoji and the animated ones always match.
+// still back-cover PNG and the animated ones always match.
 //
 // How the flip is faked: rather than a real 3D rotation (fiddly to capture
 // frame-by-frame with a headless browser), each frame just squashes the
-// card horizontally with `scaleX`, going 1 -> 0 -> -1. Whichever face is
-// "forward" swaps at the zero-crossing (half way through), which reads as
-// a coin-flip / card-flip. It's simple and it works.
+// visible face horizontally with `scaleX`, going 1 -> 0 -> 1. Whichever
+// face is "forward" swaps at the zero-crossing (half way through), which
+// reads as a coin-flip / card-flip. The scale is always a plain magnitude
+// (never negative) - an earlier version of this file preserved the sign of
+// cos(angle) into the second half of the animation, which mirrored the
+// front face horizontally. Don't reintroduce that.
+//
+// Performance note: the page is built ONCE per card (both faces already in
+// the DOM, see templates.flipDocumentHtml), and each frame just toggles
+// visibility + sets a transform via page.evaluate(). Don't go back to
+// calling page.setContent() once per frame - that's a full page navigation
+// each time (52 cards x ~18 frames = 900+ navigations) and is much slower.
+//
+// Transparency note: GIF only supports fully-on/fully-off transparency, no
+// soft edges, and it has no real alpha channel. Screenshots are taken with
+// `omitBackground: true` so Chromium renders against a truly transparent
+// backdrop (no visible colour to blend into anti-aliased edges). We then
+// walk each frame's real alpha channel ourselves: pixels that are mostly
+// transparent get remapped to a solid chroma-key colour (so the GIF
+// encoder's setTransparent() can key them out); pixels that are mostly
+// opaque keep their real, unblended colour. This avoids ever compositing
+// the card against a visible background colour, which is what caused a
+// green fringe around the rounded corners in an earlier version - do not
+// go back to painting the page background a solid colour before
+// screenshotting.
 //
 // 2026 fork addition, sits alongside the original generate-cards.js
 // GPL 3.0 Licensed
@@ -18,7 +40,7 @@ const fs = require("fs");
 const path = require("path");
 const GIFEncoder = require("gifencoder");
 const { PNG } = require("pngjs");
-const { SUITS, NUMBERS, frontCardHtml, backCardHtml, CARD_PX } = require("./templates");
+const { SUITS, NUMBERS, flipDocumentHtml, CARD_PX } = require("./templates");
 
 // ---- tuning knobs --------------------------------------------------------
 
@@ -35,26 +57,44 @@ const FRAME_DELAY_MS = 45;
 //    n = loop n additional times after the first playthrough
 //
 // Set to -1: the flip plays through exactly once and freezes on the final
-// (face-up) frame — it will not loop.
+// (face-up) frame - it will not loop.
 const GIF_LOOP_REPEAT = -1;
 
-// Chroma-key colour used to fake transparency (see note below).
-const CHROMA_KEY = "#00ff00";
+// Chroma-key colour used to mark transparent pixels for the GIF encoder.
+// Only ever applied in post-processing (see paintTransparencyKey below),
+// never actually painted into the page itself.
+const CHROMA_KEY_RGB = [0x00, 0xff, 0x00];
+const CHROMA_KEY_HEX = 0x00ff00;
+
+// Alpha values below this (out of 255) are treated as "background" and
+// remapped to the chroma key; at/above it, the pixel is treated as fully
+// opaque and keeps its real colour.
+const ALPHA_CUTOFF = 128;
 
 const OUT_DIR = path.resolve(__dirname, "gifs");
 if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR);
 
-// NOTE on transparency: GIF only supports fully-on/fully-off transparency,
-// no soft edges. We render every frame against a solid chroma-key green
-// background and tell the encoder to treat that exact colour as
-// transparent. Anti-aliased pixels right at the card's rounded corners can
-// end up with a faint green fringe rather than a perfectly clean edge —
-// a known, minor trade-off of doing this without a full alpha-aware GIF
-// pipeline. Swap CHROMA_KEY + setTransparent for a different flat colour
-// (e.g. Discord's dark theme background) if you'd rather have a solid
-// backdrop than fringing.
+// Mutates a decoded PNG's pixel buffer in place: fully/mostly-transparent
+// pixels become the chroma-key colour (for the encoder to key out),
+// fully/mostly-opaque pixels are forced fully opaque but otherwise
+// untouched. This is what keeps real card colours from ever blending
+// against a visible background colour.
+function paintTransparencyKey(png) {
+  const data = png.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    if (alpha < ALPHA_CUTOFF) {
+      data[i] = CHROMA_KEY_RGB[0];
+      data[i + 1] = CHROMA_KEY_RGB[1];
+      data[i + 2] = CHROMA_KEY_RGB[2];
+      data[i + 3] = 0xff;
+    } else {
+      data[i + 3] = 0xff;
+    }
+  }
+}
 
-async function renderFlipGif(page, frontHtml, fileName) {
+async function renderFlipGif(page, symbol, number, fileName) {
   const encoder = new GIFEncoder(CARD_PX.width, CARD_PX.height);
   const outStream = fs.createWriteStream(path.join(OUT_DIR, fileName));
   encoder.createReadStream().pipe(outStream);
@@ -63,32 +103,35 @@ async function renderFlipGif(page, frontHtml, fileName) {
   encoder.setRepeat(GIF_LOOP_REPEAT);
   encoder.setDelay(FRAME_DELAY_MS);
   encoder.setQuality(8);
-  encoder.setTransparent(0x00ff00);
+  encoder.setTransparent(CHROMA_KEY_HEX);
 
-  const backHtml = backCardHtml();
+  // Build the page ONCE for this card - both faces already in the DOM.
+  await page.setContent(flipDocumentHtml(symbol, number), { waitUntil: "load" });
 
   for (let f = 0; f < FRAME_COUNT; f++) {
     const t = f / (FRAME_COUNT - 1); // 0 -> 1
     const angle = t * Math.PI; // 0 -> PI
-    const scaleX = Math.cos(angle); // 1 -> -1
+    const scale = Math.max(Math.abs(Math.cos(angle)), 0.04); // 1 -> 0 -> 1, never negative
     const showFront = t >= 0.5;
 
-    await page.setContent(showFront ? frontHtml : backHtml, { waitUntil: "load" });
     await page.evaluate(
-      ({ scale, chromaKey }) => {
-        document.body.style.background = chromaKey;
-        const el = document.querySelector("#card");
-        el.style.transformOrigin = "center";
-        // clamp so the card never hits a literal zero-width frame
-        el.style.transform = `scaleX(${Math.max(Math.abs(scale), 0.04) * Math.sign(scale || 1)})`;
+      ({ scale, showFront }) => {
+        const front = document.getElementById("front-face");
+        const back = document.getElementById("back-face");
+        front.style.display = showFront ? "block" : "none";
+        back.style.display = showFront ? "none" : "block";
+        const visible = showFront ? front : back;
+        visible.style.transform = `scaleX(${scale})`;
       },
-      { scale: scaleX, chromaKey: CHROMA_KEY }
+      { scale, showFront }
     );
 
     const buffer = await page.screenshot({
+      omitBackground: true,
       clip: { x: 0, y: 0, width: CARD_PX.width, height: CARD_PX.height },
     });
     const png = PNG.sync.read(buffer);
+    paintTransparencyKey(png);
     encoder.addFrame(png.data);
   }
 
@@ -107,7 +150,7 @@ async function renderFlipGif(page, frontHtml, fileName) {
     for (const number of NUMBERS) {
       const fileName = `${number}_of_${SUITS[symbol].name}.gif`;
       console.log(`flip: ${symbol} ${number} -> ${fileName}`);
-      await renderFlipGif(page, frontCardHtml(symbol, number), fileName);
+      await renderFlipGif(page, symbol, number, fileName);
     }
   }
 
