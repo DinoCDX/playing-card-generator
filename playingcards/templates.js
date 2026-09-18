@@ -45,13 +45,13 @@ ${bodyHtml}
 </html>`;
 }
 
-function frontCardHtml(symbol, number) {
+function frontCardParts(symbol, number, rootId) {
   const suit = SUITS[symbol];
   const color = suit.color;
   const rankSize = rankSizeForNumber(number);
 
   const css = `
-    #card {
+    #${rootId} {
       position: relative;
       overflow: hidden;
       width: ${CARD_WIDTH};
@@ -61,7 +61,7 @@ function frontCardHtml(symbol, number) {
       box-shadow: 0 0.06in 0.12in rgba(0,0,0,0.35);
       font-family: Georgia, 'Times New Roman', serif;
     }
-    .watermark {
+    #${rootId} .watermark {
       position: absolute;
       inset: 0;
       display: flex;
@@ -72,15 +72,15 @@ function frontCardHtml(symbol, number) {
       opacity: 0.09;
       color: ${color};
     }
-    .corner {
+    #${rootId} .corner {
       position: absolute;
       font-size: 0.55in;
       line-height: 1;
       color: ${color};
     }
-    .corner.top { top: 0.14in; left: 0.16in; }
-    .corner.bottom { bottom: 0.14in; right: 0.16in; transform: rotate(180deg); }
-    .rank {
+    #${rootId} .corner.top { top: 0.14in; left: 0.16in; }
+    #${rootId} .corner.bottom { bottom: 0.14in; right: 0.16in; transform: rotate(180deg); }
+    #${rootId} .rank {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -94,13 +94,18 @@ function frontCardHtml(symbol, number) {
   `;
 
   const bodyHtml = `
-    <div id="card">
+    <div id="${rootId}">
       <div class="watermark">${symbol}</div>
       <div class="corner top">${symbol}</div>
       <div class="rank">${number}</div>
       <div class="corner bottom">${symbol}</div>
     </div>`;
 
+  return { css, bodyHtml };
+}
+
+function frontCardHtml(symbol, number) {
+  const { css, bodyHtml } = frontCardParts(symbol, number, "card");
   return docShell(css, bodyHtml, "transparent");
 }
 
@@ -110,9 +115,9 @@ function frontCardHtml(symbol, number) {
 const BACK_STOCK_COLOR = "#7a1128"; // deep red cardstock
 const BACK_INK_COLOR = "#e9d9b8"; // cream ink
 
-function backCardHtml() {
+function backCardParts(rootId) {
   const css = `
-    #card {
+    #${rootId} {
       position: relative;
       overflow: hidden;
       width: ${CARD_WIDTH};
@@ -122,7 +127,7 @@ function backCardHtml() {
       box-shadow: 0 0.06in 0.12in rgba(0,0,0,0.35);
     }
     /* thin outer frame, like the edge printing on real card stock */
-    .frame-outer {
+    #${rootId} .frame-outer {
       position: absolute;
       inset: 0.12in;
       border: 0.045in solid ${BACK_INK_COLOR};
@@ -130,7 +135,7 @@ function backCardHtml() {
     }
     /* inner frame filled with a criss-cross diamond lattice, the classic
        "Bicycle style" all-over back pattern */
-    .frame-inner {
+    #${rootId} .frame-inner {
       position: absolute;
       inset: 0.2in;
       border: 0.02in solid ${BACK_INK_COLOR};
@@ -142,7 +147,7 @@ function backCardHtml() {
     }
     /* central rosette/medallion, built from concentric rings, no text or
        emoji involved */
-    .medallion {
+    #${rootId} .medallion {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -162,10 +167,49 @@ function backCardHtml() {
   `;
 
   const bodyHtml = `
-    <div id="card">
+    <div id="${rootId}">
       <div class="frame-outer"></div>
       <div class="frame-inner"></div>
       <div class="medallion"></div>
+    </div>`;
+
+  return { css, bodyHtml };
+}
+
+function backCardHtml() {
+  const { css, bodyHtml } = backCardParts("card");
+  return docShell(css, bodyHtml, "transparent");
+}
+
+// Combined document holding BOTH faces for one card, stacked in the same
+// spot. Built once per card, then the caller toggles which face is
+// displayed and sets the scaleX transform via page.evaluate() for every
+// frame — no per-frame page.setContent()/navigation needed, which is what
+// made the original frame-by-frame approach slow (52 cards x ~18 frames =
+// ~900+ full page loads). This is only used by generate-flip-gifs.js.
+function flipDocumentHtml(symbol, number) {
+  const front = frontCardParts(symbol, number, "front-face");
+  const back = backCardParts("back-face");
+
+  const css = `
+    #stage {
+      position: relative;
+      width: ${CARD_WIDTH};
+      height: ${CARD_HEIGHT};
+    }
+    #front-face, #back-face {
+      position: absolute;
+      inset: 0;
+      transform-origin: center;
+    }
+    ${front.css}
+    ${back.css}
+  `;
+
+  const bodyHtml = `
+    <div id="stage">
+      ${front.bodyHtml}
+      ${back.bodyHtml}
     </div>`;
 
   return docShell(css, bodyHtml, "transparent");
@@ -177,4 +221,5 @@ module.exports = {
   CARD_PX,
   frontCardHtml,
   backCardHtml,
+  flipDocumentHtml,
 };
