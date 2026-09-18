@@ -12,8 +12,6 @@
   "author": "false-fox",
   "license": "GPL-3.0-only",
   "dependencies": {
-    "puppeteer": "^22.15.0",
-    "gifencoder": "^2.0.1",
-    "pngjs": "^7.0.0"
+    "puppeteer": "^22.15.0"
   }
 }
